@@ -208,16 +208,77 @@ templateKeys = set(['10', '828'])
 # Regex for identifying disambig pages
 filter_disambig_page_pattern = re.compile("{{disambig(uation)?(\|[^}]*)?}}")
 
+
+
+
+
+
 ##
 # page filtering logic -- remove templates, undesired xml namespaces, and disambiguation pages
-def keepPage(ns, page):
+def keepPage(ns, page, title, label, author):
     if ns != '0':               # Aritcle
         return False
     # remove disambig pages if desired
-    if options.filter_disambig_pages:
+    #if options.filter_disambig_pages:
+    #    for line in page:
+    #        if filter_disambig_page_pattern.match(line):
+    #            return False
+    
+
+    if title == label:
+        
+        found_author = False
+        found_category = False
+
         for line in page:
-            if filter_disambig_page_pattern.match(line):
+            if author in line:
+                found_author = True
+                
+            if "[[Category:" in line and ("song" in line or "single" in line):
+                found_category = True
+        
+        if not found_author or not found_category:
+            return False
+
+        #Check if it's a song and if it's the one I'm looking for (author)
+    else:
+        if title[-1] != ")":
+            return False
+
+        title = title[:-1]
+
+        splitted = title.split(" (")
+
+        if len(splitted) != 2:
+            return False
+        
+        name = splitted[0]
+        disambig = splitted[1]
+
+        if name != label:
+            return False
+
+        if "song" not in disambig:
+            return False
+
+            
+        if "song" == disambig:
+            
+            found_author = False
+
+            for line in page:
+                if author in line:
+                    found_author = True
+
+            if not found_author:
                 return False
+            
+        elif author not in disambig:
+
+            return False
+
+
+    
     return True
 
 
@@ -2935,11 +2996,34 @@ def process_dump(input_file, template_file, out_file, file_size, file_compress,
         extractor.start()
         workers.append(extractor)
 
+
+    dict_songs = {}
+    dict_songs['Havana'] = 'Camilla Cabello'
+    dict_songs['All the Stars'] = 'Kendrick Lamar'
+    dict_songs['Pray for Me'] = 'The Weeknd and Kendrick Lamar'
+
     # Mapper process
     page_num = 0
     for page_data in pages_from(input):
         id, revid, title, ns, page = page_data
-        if keepPage(ns, page):
+
+        label = ""
+        author = ""
+
+        for key in dict_songs:
+            if key in title:
+                label = key 
+                author = dict_songs[key]
+                break
+        
+        if label == "" and author == "":
+            continue
+        
+        print title
+
+        if keepPage(ns, page, title, label, author):
+            print "FOUND ", label, " -> ", author
+            del dict_songs[label]
             # slow down
             delay = 0
             if spool_length.value > max_spool_length:
@@ -2973,6 +3057,9 @@ def process_dump(input_file, template_file, out_file, file_size, file_compress,
     logging.info("Finished %d-process extraction of %d articles in %.1fs (%.1f art/s)",
                  process_count, page_num, extract_duration, extract_rate)
 
+    
+    for key in dict_songs:
+        print "Not found: ", key, " -> ", dict_songs[key]
 
 # ----------------------------------------------------------------------
 # Multiprocess support
@@ -3099,62 +3186,22 @@ def main():
 
 
     groupP = parser.add_argument_group('Processing')
-    groupP.add_argument("--html", action="store_true",
-                        help="produce HTML output, subsumes --links")
-    groupP.add_argument("-l", "--links", action="store_true",
-                        help="preserve links")
-    groupP.add_argument("-s", "--sections", action="store_true",
-                        help="preserve sections")
-    groupP.add_argument("--lists", action="store_true",
-                        help="preserve lists")
-    groupP.add_argument("-ns", "--namespaces", default="", metavar="ns1,ns2",
-                        help="accepted namespaces in links")
-    groupP.add_argument("--templates",
-                        help="use or create file containing templates")
-    groupP.add_argument("--no-templates", action="store_false",
-                        help="Do not expand templates")
-    groupP.add_argument("-r", "--revision", action="store_true", default=options.print_revision,
-                        help="Include the document revision id (default=%(default)s)")
-    groupP.add_argument("--min_text_length", type=int, default=options.min_text_length,
-                        help="Minimum expanded text length required to write document (default=%(default)s)")
-    groupP.add_argument("--filter_disambig_pages", action="store_true", default=options.filter_disambig_pages,
-                        help="Remove pages from output that contain disabmiguation markup (default=%(default)s)")
     groupP.add_argument("-it", "--ignored_tags", default="", metavar="abbr,b,big",
                         help="comma separated list of tags that will be dropped, keeping their content")
     groupP.add_argument("-de", "--discard_elements", default="", metavar="gallery,timeline,noinclude",
                         help="comma separated list of elements that will be removed from the article text")
-    groupP.add_argument("--keep_tables", action="store_true", default=options.keep_tables,
-                        help="Preserve tables in the output article text (default=%(default)s)")
     default_process_count = max(1, cpu_count() - 1)
     parser.add_argument("--processes", type=int, default=default_process_count,
                         help="Number of processes to use (default %(default)s)")
 
     groupS = parser.add_argument_group('Special')
-    groupS.add_argument("-q", "--quiet", action="store_true",
-                        help="suppress reporting progress info")
-    groupS.add_argument("--debug", action="store_true",
-                        help="print debug info")
-    groupS.add_argument("-a", "--article", action="store_true",
-                        help="analyze a file containing a single article (debug option)")
-    groupS.add_argument("-v", "--version", action="version",
-                        version='%(prog)s ' + version,
-                        help="print program version")
 
     args = parser.parse_args()
 
-    options.keepLinks = args.links
-    options.keepSections = args.sections
-    options.keepLists = args.lists
-    options.toHTML = args.html
-    options.write_json = args.json
-    options.print_revision = args.revision
-    options.min_text_length = args.min_text_length
-    if args.html:
-        options.keepLinks = True
 
-    options.expand_templates = args.no_templates
-    options.filter_disambig_pages = args.filter_disambig_pages
-    options.keep_tables = args.keep_tables
+
+    options.write_json = args.json
+
 
     try:
         power = 'kmg'.find(args.bytes[-1].lower()) + 1
@@ -3165,8 +3212,7 @@ def main():
         logging.error('Insufficient or invalid size: %s', args.bytes)
         return
 
-    if args.namespaces:
-        options.acceptedNamespaces = set(args.namespaces.split(','))
+
 
     # ignoredTags and discardElemets have default values already supplied, if passed in the defaults are overwritten
     if args.ignored_tags:
@@ -3188,9 +3234,6 @@ def main():
 
     FORMAT = '%(levelname)s: %(message)s'
     logging.basicConfig(format=FORMAT)
-
-    options.quiet = args.quiet
-    options.debug = args.debug
     
     createLogger(options.quiet, options.debug)
 
@@ -3202,19 +3245,6 @@ def main():
     # sharing cache of parser templates is too slow:
     # manager = Manager()
     # templateCache = manager.dict()
-
-    if args.article:
-        if args.templates:
-            if os.path.exists(args.templates):
-                with open(args.templates) as file:
-                    load_templates(file)
-
-        file = fileinput.FileInput(input_file, openhook=fileinput.hook_compressed)
-        for page_data in pages_from(file):
-            id, revid, title, ns, page = page_data
-            Extractor(id, revid, title, page).extract(sys.stdout)
-        file.close()
-        return
 
     output_path = args.output
     if output_path != '-' and not os.path.isdir(output_path):
