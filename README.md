@@ -78,43 +78,15 @@ Each file will contains several documents in this [document format](http://media
       --json                write output in json format instead of the default one
 
     Processing:
-      --html                produce HTML output, subsumes --links
-      -l, --links           preserve links
-      -s, --sections        preserve sections
-      --lists               preserve lists
-      -ns ns1,ns2, --namespaces ns1,ns2
-                            accepted namespaces in links
-      --templates TEMPLATES
-                            use or create file containing templates
       --no-templates        Do not expand templates
-      -r, --revision        Include the document revision id (default=False)
-      --min_text_length MIN_TEXT_LENGTH
-                            Minimum expanded text length required to write
-                            document (default=0)
-      --filter_disambig_pages
-                            Remove pages from output that contain disabmiguation
-                            markup (default=False)
       -it abbr,b,big, --ignored_tags abbr,b,big
                             comma separated list of tags that will be dropped,
                             keeping their content
       -de gallery,timeline,noinclude, --discard_elements gallery,timeline,noinclude
                             comma separated list of elements that will be removed
                             from the article text
-      --keep_tables         Preserve tables in the output article text
-                            (default=False)
 
-    Special:
-      -q, --quiet           suppress reporting progress info
-      --debug               print debug info
-      -a, --article         analyze a file containing a single article (debug
-                            option)
-      -v, --version         print program version
-
-
-Saving templates to a file will speed up performing extraction the next time,
-assuming template definitions have not changed.
 
 Option --no-templates significantly speeds up the extractor, avoiding the cost
 of expanding [MediaWiki templates](https://www.mediawiki.org/wiki/Help:Templates).
 
-For further information, visit [the documentation](http://attardi.github.io/wikiextractor).

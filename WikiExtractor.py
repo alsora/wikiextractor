@@ -64,6 +64,7 @@ import cgi
 import fileinput
 import logging
 import os.path
+import csv
 import re  # TODO use regex when it will be standard
 import time
 import json
@@ -215,71 +216,71 @@ filter_disambig_page_pattern = re.compile("{{disambig(uation)?(\|[^}]*)?}}")
 
 ##
 # page filtering logic -- remove templates, undesired xml namespaces, and disambiguation pages
-def keepPage(ns, page, title, label, author):
+def keepPage(ns, page, title, labels, authors):
     if ns != '0':               # Aritcle
         return False
-    # remove disambig pages if desired
-    #if options.filter_disambig_pages:
-    #    for line in page:
-    #        if filter_disambig_page_pattern.match(line):
-    #            return False
-    
 
-    if title == label:
-        
-        found_author = False
-        found_category = False
 
-        for line in page:
-            if author in line:
-                found_author = True
-                
-            if "[[Category:" in line and ("song" in line or "single" in line):
-                found_category = True
-        
-        if not found_author or not found_category:
-            return False
+    for index in range(len(labels)):
 
-        #Check if it's a song and if it's the one I'm looking for (author)
-    else:
-        if title[-1] != ")":
-            return False
+        label = labels[index]
+        author = authors[index]
 
-        title = title[:-1]
 
-        splitted = title.split(" (")
-
-        if len(splitted) != 2:
-            return False
-        
-        name = splitted[0]
-        disambig = splitted[1]
-
-        if name != label:
-            return False
-
-        if "song" not in disambig:
-            return False
-
-            
-        if "song" == disambig:
+        if title == label:
             
             found_author = False
+            found_category = False
 
             for line in page:
                 if author in line:
                     found_author = True
-
-            if not found_author:
-                return False
+                    
+                if "[[Category:" in line and ("song" in line or "single" in line):
+                    found_category = True
             
-        elif author not in disambig:
+            if found_author and found_category:
+                return True
 
-            return False
+        else:
+            if title[-1] != ")":
+                continue
+
+            title = title[:-1]
+
+            splitted = title.split(" (")
+
+            if len(splitted) != 2:
+                continue
+            
+            name = splitted[0]
+            disambig = splitted[1]
+
+            if name != label:
+                continue
+
+            if "song" not in disambig:
+                continue
+
+                
+            if "song" == disambig:
+                
+                found_author = False
+
+                for line in page:
+                    if author in line:
+                        found_author = True
+
+                if found_author:
+                    return True
+                
+            elif author in disambig:
+
+                return True
 
 
     
-    return True
+    return False
 
 
 def get_url(uid):
@@ -2888,7 +2889,7 @@ def pages_from(input):
             page = []
 
 
-def process_dump(input_file, template_file, out_file, file_size, file_compress,
+def process_dump(input_file, out_file, file_size, file_compress,
                  process_count):
     """
     :param input_file: name of the wikipedia dump file; '-' to read from stdin
@@ -2933,27 +2934,7 @@ def process_dump(input_file, template_file, out_file, file_size, file_compress,
         elif tag == '/siteinfo':
             break
 
-    if options.expand_templates:
-        # preprocess
-        template_load_start = default_timer()
-        if template_file:
-            if os.path.exists(template_file):
-                logging.info("Loading template definitions from: %s", template_file)
-                # can't use with here:
-                file = fileinput.FileInput(template_file,
-                                           openhook=fileinput.hook_compressed)
-                load_templates(file)
-                file.close()
-            else:
-                if input_file == '-':
-                    # can't scan then reset stdin; must error w/ suggestion to specify template_file
-                    raise ValueError("to use templates with stdin dump, must supply explicit template-file")
-                logging.info("Preprocessing '%s' to collect template definitions: this may take some time.", input_file)
-                load_templates(input, template_file)
-                input.close()
-                input = fileinput.FileInput(input_file, openhook=fileinput.hook_compressed)
-        template_load_elapsed = default_timer() - template_load_start
-        logging.info("Loaded %d templates in %.1fs", len(options.templates), template_load_elapsed)
+
 
     # process pages
     logging.info("Starting page extraction from %s.", input_file)
@@ -2997,33 +2978,30 @@ def process_dump(input_file, template_file, out_file, file_size, file_compress,
         workers.append(extractor)
 
 
-    dict_songs = {}
-    dict_songs['Havana'] = 'Camilla Cabello'
-    dict_songs['All the Stars'] = 'Kendrick Lamar'
-    dict_songs['Pray for Me'] = 'The Weeknd and Kendrick Lamar'
 
     # Mapper process
     page_num = 0
     for page_data in pages_from(input):
         id, revid, title, ns, page = page_data
 
-        label = ""
-        author = ""
+        proceed = False
 
-        for key in dict_songs:
+        labels = []
+        authors = []
+
+        for key in dict_articles:
             if key in title:
-                label = key 
-                author = dict_songs[key]
+                labels.append(key)
+                authors.append(dict_articles[key])
+                proceed = True
                 break
         
-        if label == "" and author == "":
+        if not proceed or not extract_all:
             continue
-        
-        print title
 
-        if keepPage(ns, page, title, label, author):
-            print "FOUND ", label, " -> ", author
-            del dict_songs[label]
+        if keepPage(ns, page, title, labels, authors):
+            print "$$$$FOUND ", title
+
             # slow down
             delay = 0
             if spool_length.value > max_spool_length:
@@ -3057,9 +3035,6 @@ def process_dump(input_file, template_file, out_file, file_size, file_compress,
     logging.info("Finished %d-process extraction of %d articles in %.1fs (%.1f art/s)",
                  process_count, page_num, extract_duration, extract_rate)
 
-    
-    for key in dict_songs:
-        print "Not found: ", key, " -> ", dict_songs[key]
 
 # ----------------------------------------------------------------------
 # Multiprocess support
@@ -3173,6 +3148,8 @@ def main():
                                      description=__doc__)
     parser.add_argument("input",
                         help="XML wiki dump file")
+    parser.add_argument("--songs", type=str, default="",
+                        help="file containing new line separed songs to extract ( tytle \\t artist \\n)" )
     groupO = parser.add_argument_group('Output')
     groupO.add_argument("-o", "--output", default="text",
                         help="directory for extracted files (or '-' for dumping to stdout)")
@@ -3191,18 +3168,35 @@ def main():
     groupP.add_argument("-de", "--discard_elements", default="", metavar="gallery,timeline,noinclude",
                         help="comma separated list of elements that will be removed from the article text")
     default_process_count = max(1, cpu_count() - 1)
+    groupP.add_argument("--no-templates", action="store_false",
+                        help="Do not expand templates")
     parser.add_argument("--processes", type=int, default=default_process_count,
                         help="Number of processes to use (default %(default)s)")
 
-    groupS = parser.add_argument_group('Special')
 
     args = parser.parse_args()
 
 
+    if args.songs:
+        extract_all = False
+        csvfile = open(args.songs, "rb")
+        reader = csv.reader(csvfile, delimiter=str(u'\t').encode('utf-8'))
+
+        for row in reader:
+
+            lyric_tytle = row[0]
+            artist = row[1]
+
+            dict_articles[lyric_tytle] = artist
+
+        csvfile.close()
+    
+
+    print "Trying to extract ", len(dict_articles), " articles"
 
     options.write_json = args.json
-
-
+    #options.expand_templates = args.no_templates
+    options.expand_templates = False
     try:
         power = 'kmg'.find(args.bytes[-1].lower()) + 1
         file_size = int(args.bytes[:-1]) * 1024 ** power
@@ -3235,6 +3229,9 @@ def main():
     FORMAT = '%(levelname)s: %(message)s'
     logging.basicConfig(format=FORMAT)
     
+    options.quiet = False
+    options.debug = False
+
     createLogger(options.quiet, options.debug)
 
     input_file = args.input
@@ -3254,7 +3251,7 @@ def main():
             logging.error('Could not create: %s', output_path)
             return
 
-    process_dump(input_file, args.templates, output_path, file_size,
+    process_dump(input_file, output_path, file_size,
                  args.compress, args.processes)
 
 def createLogger(quiet, debug):
@@ -3265,4 +3262,8 @@ def createLogger(quiet, debug):
         logger.setLevel(logging.DEBUG)
 
 if __name__ == '__main__':
+
+    dict_articles = {}
+    extract_all = True
+
     main()
