@@ -43,14 +43,7 @@ Each file will contain several documents in the format:
         ...
         </doc>
 
-If the program is invoked with the --json flag, then each file will
-contain several documents formatted as json ojects, one per line, with
-the following structure
 
-    {"id": "", "revid": "", "url":"", "title": "", "text": "..."}
-
-Template expansion requires preprocesssng first the whole dump and
-collecting template definitions.
 
 """
 
@@ -215,66 +208,63 @@ filter_disambig_page_pattern = re.compile("{{disambig(uation)?(\|[^}]*)?}}")
 
 
 ##
-# page filtering logic -- remove templates, undesired xml namespaces, and disambiguation pages
-def keepPage(page, title, labels, authors):
-
-
+def disambiguatePages(page, page_title, labels, authors):
 
     for index in range(len(labels)):
 
         label = labels[index]
         author = authors[index]
 
-
-        if title == label:
+        #page_title "Havana" == "Havana" by Camila Cabello -> Check if this page is about a song and if the artist name is included in it
+        if page_title == label:
             
             found_author = False
             found_category = False
 
             for line in page:
-                if author in line:
+                if not found_author and author in line:
                     found_author = True
                     
-                if "[[Category:" in line and ("song" in line or "single" in line):
+                if not found_category and "[[Category:" in line and ("song" in line or "single" in line):
                     found_category = True
             
             if found_author and found_category:
+                del dict_articles[label]
                 return True
-
+        
+        #page_title "History of Havana" or "Havana (song)" or "Havana (Camila Cabello song)"
         else:
-            if title[-1] != ")":
+            if page_title[-1] != ")":
                 continue
 
-            title = title[:-1]
+            page_title = page_title[:-1]
 
-            splitted = title.split(" (")
+            splitted = page_title.split(" (")
 
             if len(splitted) != 2:
                 continue
             
             name = splitted[0]
-            disambig = splitted[1]
+            disambiguate = splitted[1]
 
             if name != label:
                 continue
 
-            if "song" not in disambig:
+            if "song" not in disambiguate:
                 continue
 
+            if "song" == disambiguate:
                 
-            if "song" == disambig:
-                
-                found_author = False
+
 
                 for line in page:
                     if author in line:
-                        found_author = True
+                        del dict_articles[label]
+                        return True
 
-                if found_author:
-                    return True
-                
-            elif author in disambig:
 
+            elif author in disambiguate:
+                del dict_articles[label]
                 return True
 
 
@@ -2983,39 +2973,43 @@ def process_dump(input_file, out_file, file_size, file_compress,
     for page_data in pages_from(input):
         id, revid, title, ns, page = page_data
 
-        if ns != '0':              
+        if ns != '0':
+            page = None     # free memory              
         	continue
 
-        proceed = False
 
-        labels = []
-        authors = []
+        if not extract_all:
 
-        for key in dict_articles:
-            if key in title:
-                labels.append(key)
-                authors.append(dict_articles[key])
-                proceed = True
-                break
+            labels = []
+            authors = []
+
+            for key in dict_articles:
+                if key in title:
+                    labels.append(key)
+                    authors.append(dict_articles[key])   
+
+            if not disambiguatePages(page, title, labels, authors):
+                
+                page = None     # free memory              
+        	    continue            
+
         
-        if not proceed or not extract_all:
-            continue
+        
+        print "$$$$FOUND ", title
 
-        if keepPage(page, title, labels, authors):
-            print "$$$$FOUND ", title
-
-            # slow down
-            delay = 0
-            if spool_length.value > max_spool_length:
-                # reduce to 10%
-                while spool_length.value > max_spool_length/10:
-                    time.sleep(10)
-                    delay += 10
-            if delay:
-                logging.info('Delay %ds', delay)
-            job = (id, revid, title, page, page_num)
-            jobs_queue.put(job) # goes to any available extract_process
-            page_num += 1
+        # slow down
+        delay = 0
+        if spool_length.value > max_spool_length:
+            # reduce to 10%
+            while spool_length.value > max_spool_length/10:
+                time.sleep(10)
+                delay += 10
+        if delay:
+            logging.info('Delay %ds', delay)
+        job = (id, revid, title, page, page_num)
+        jobs_queue.put(job) # goes to any available extract_process
+        page_num += 1
+        
         page = None             # free memory
 
     input.close()
@@ -3241,9 +3235,6 @@ def main():
     if not options.keepLinks:
         ignoreTag('a')
 
-    # sharing cache of parser templates is too slow:
-    # manager = Manager()
-    # templateCache = manager.dict()
 
     output_path = args.output
     if output_path != '-' and not os.path.isdir(output_path):
