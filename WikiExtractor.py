@@ -216,9 +216,8 @@ filter_disambig_page_pattern = re.compile("{{disambig(uation)?(\|[^}]*)?}}")
 
 ##
 # page filtering logic -- remove templates, undesired xml namespaces, and disambiguation pages
-def keepPage(ns, page, title, labels, authors):
-    if ns != '0':               # Aritcle
-        return False
+def keepPage(page, title, labels, authors):
+
 
 
     for index in range(len(labels)):
@@ -2984,6 +2983,9 @@ def process_dump(input_file, out_file, file_size, file_compress,
     for page_data in pages_from(input):
         id, revid, title, ns, page = page_data
 
+        if ns != '0':              
+        	continue
+
         proceed = False
 
         labels = []
@@ -2999,7 +3001,7 @@ def process_dump(input_file, out_file, file_size, file_compress,
         if not proceed or not extract_all:
             continue
 
-        if keepPage(ns, page, title, labels, authors):
+        if keepPage(page, title, labels, authors):
             print "$$$$FOUND ", title
 
             # slow down
