@@ -198,17 +198,106 @@ options = SimpleNamespace(
 # Keys for Template and Module namespaces
 templateKeys = set(['10', '828'])
 
-##
-# Regex for identifying disambig pages
-filter_disambig_page_pattern = re.compile("{{disambig(uation)?(\|[^}]*)?}}")
+
+def loadDictArticles(path):
+
+    #( tytle \\t artist \\n)
+
+    extract_all = False
+    csvfile = open(args.articles, "rb")
+    reader = csv.reader(csvfile, delimiter=str(u'\t').encode('utf-8'))
+
+    for row in reader:
+
+        lyric_tytle = row[0]
+        artist = row[1]
+
+        dict_articles[lyric_tytle] = artist
+
+    csvfile.close()
 
 
 
+##Keep all pages related to music
+def keepPage(page, page_title):
+
+    if page_title[-1] == ")":
+        splitted = page_title[:-1].split(" (")
+
+        if len(splitted) == 2:
+            name = splitted[0]
+            disambiguate = splitted[1]
+
+            if "song" in disambiguate:
+                return True
+            
+        
+        return False
+
+    
+    for line in page:
+        if "[[Category:" in line:
+            if "song" in line:
+                #print line 
+                return True
+            elif "single" in line and not "tennis" in line and not "skater" in line and not "game" in line:
+                #print line
+                return True
+            elif "album" in line:
+                #print line
+                return True
+            elif "musician" in line:
+                #print line
+                return True
+        
+
+    return False
+                
+
+##Keep pages for all the songs in the dict_articles list
+'''
+def keepPage(page, title):
+
+    if extract_all:
+        return True
 
 
+    labels = []
+    authors = []
 
-##
+    for key in dict_articles:
+        if key in title:
+            labels.append(key)
+            authors.append(dict_articles[key])
+
+    if disambiguatePages(page, title, labels, authors):
+        return True
+
+
+    return False    
+
+
 def disambiguatePages(page, page_title, labels, authors):
+
+    check_disambiguate = False
+
+
+    #Check if this is a disambiguation page: page_title "Havana (song)"
+    if page_title[-1] == ")":
+        
+        #page_title = page_title[:-1]
+        splitted = page_title[:-1].split(" (")
+
+        if len(splitted) == 2:
+
+            name = splitted[0]
+            disambiguate = splitted[1]
+
+            if "song" in disambiguate:
+                check_disambiguate = True
+            else:
+                return False
+
 
     for index in range(len(labels)):
 
@@ -229,47 +318,35 @@ def disambiguatePages(page, page_title, labels, authors):
                     found_category = True
             
             if found_author and found_category:
+                print "$$$$FOUND ", page_title, " -> ", label, " - ", author
                 del dict_articles[label]
                 return True
         
         #page_title "History of Havana" or "Havana (song)" or "Havana (Camila Cabello song)"
-        else:
-            if page_title[-1] != ")":
-                continue
-
-            page_title = page_title[:-1]
-
-            splitted = page_title.split(" (")
-
-            if len(splitted) != 2:
-                continue
-            
-            name = splitted[0]
-            disambiguate = splitted[1]
+        elif check_disambiguate:
 
             if name != label:
                 continue
 
-            if "song" not in disambiguate:
-                continue
-
             if "song" == disambiguate:
                 
-
-
                 for line in page:
                     if author in line:
+                        print "$$$$FOUND ", page_title, " -> ", label, " - ", author
                         del dict_articles[label]
                         return True
 
 
             elif author in disambiguate:
+                print "$$$$FOUND ", page_title, " -> ", label, " - ", author
                 del dict_articles[label]
                 return True
 
 
     
     return False
+
+'''
 
 
 def get_url(uid):
@@ -2975,28 +3052,14 @@ def process_dump(input_file, out_file, file_size, file_compress,
 
         if ns != '0':
             page = None     # free memory              
-        	continue
+            continue
 
 
-        if not extract_all:
+        if not keepPage(page, title):
+            page = None     # free memory              
+            continue                
 
-            labels = []
-            authors = []
-
-            for key in dict_articles:
-                if key in title:
-                    labels.append(key)
-                    authors.append(dict_articles[key])   
-
-            if not disambiguatePages(page, title, labels, authors):
-                
-                page = None     # free memory              
-        	    continue            
-
-        
-        
-        print "$$$$FOUND ", title
-
+     
         # slow down
         delay = 0
         if spool_length.value > max_spool_length:
@@ -3011,6 +3074,7 @@ def process_dump(input_file, out_file, file_size, file_compress,
         page_num += 1
         
         page = None             # free memory
+
 
     input.close()
 
@@ -3144,8 +3208,8 @@ def main():
                                      description=__doc__)
     parser.add_argument("input",
                         help="XML wiki dump file")
-    parser.add_argument("--songs", type=str, default="",
-                        help="file containing new line separed songs to extract ( tytle \\t artist \\n)" )
+    parser.add_argument("-articles", type=str, default="",
+                        help="file containing new line separed articles identifiers to extract" )
     groupO = parser.add_argument_group('Output')
     groupO.add_argument("-o", "--output", default="text",
                         help="directory for extracted files (or '-' for dumping to stdout)")
@@ -3173,19 +3237,9 @@ def main():
     args = parser.parse_args()
 
 
-    if args.songs:
-        extract_all = False
-        csvfile = open(args.songs, "rb")
-        reader = csv.reader(csvfile, delimiter=str(u'\t').encode('utf-8'))
+    if args.articles:
 
-        for row in reader:
-
-            lyric_tytle = row[0]
-            artist = row[1]
-
-            dict_articles[lyric_tytle] = artist
-
-        csvfile.close()
+        dict_articles = loadDictArticles(args.articles)
     
 
     print "Trying to extract ", len(dict_articles), " articles"
@@ -3257,6 +3311,6 @@ def createLogger(quiet, debug):
 if __name__ == '__main__':
 
     dict_articles = {}
-    extract_all = True
+    extract_all = False
 
     main()

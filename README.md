@@ -1,5 +1,8 @@
 # WikiExtractor
 [WikiExtractor.py](http://medialab.di.unipi.it/wiki/Wikipedia_Extractor) is a Python script that extracts and cleans text from a [Wikipedia database dump](http://download.wikimedia.org/).
+It is an extension of the WikiExtractor script written by Giuseppe Attardi.
+
+This version is simplified in its usage and it allows to easily select only a subset of article pages to extract.
 
 The tool is written in Python and requires Python 2.7 or Python 3.3+ but no additional library.
 
@@ -29,7 +32,9 @@ The script may be invoked directly, however it can be installed by doing:
     (sudo) python setup.py install
 
 ## Usage
-The script is invoked with a Wikipedia dump file as an argument.
+
+The script must be invoked with 1 argument at least: the path to the Wikipedia dump from which data will be extracted.
+
 The output is stored in several files of similar size in a given directory.
 Each file will contains several documents in this [document format](http://medialab.di.unipi.it/wiki/Document_Format).
 
@@ -89,4 +94,21 @@ Each file will contains several documents in this [document format](http://media
 
 Option --no-templates significantly speeds up the extractor, avoiding the cost
 of expanding [MediaWiki templates](https://www.mediawiki.org/wiki/Help:Templates).
+
+
+## Extraction of specific pages
+
+The current implementation extracts music related pages.
+In order to select which pages to consider it is simply sufficient to modify the keepPage method.
+
+This method takes as input a whole  article page and its title.
+You can check the latter or the categories the page is inserted into.
+
+It is also possible to provide a list of pages to be extracted.
+The titles will be loaded using the method loadDictArticles into a dictionary.
+An example consist in providing pairs song_name \t artist.
+Then using a more elaborated keepPage method (which also handles disambiguation) it is possible to extract these pages only.
+This example is inserted commented in the code.
+
+NOTE: if the list of pages to extract is quite long, the execution of the code will be way slower compared to a standard one (where all the pages are extracted or only the one related to a category).
 
